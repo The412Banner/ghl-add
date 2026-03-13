@@ -1,5 +1,23 @@
 # ghl-add Progress Log
 
+## v1.0.3 — fix: TarArchiveEntry.getName() is p() in 5.1.4 + use 3-arg read() (2026-03-13)
+**Commit:** `bff874d` | **Tag:** `v1.0.3`
+
+### What changed
+- **DXVK and FEXCore injection failing** with `NoSuchMethodException: TarArchiveEntry.getName []`.
+  Root cause: the `ArchiveEntry` interface is fully stripped by R8 in 5.1.4, so `getName()` is not
+  kept as an interface implementation. The obfuscated name is `p()` (returns field `a` = entry path).
+  Fix: changed `entry.getClass().getMethod("getName")` → `getMethod("p")` in `extractTar()`.
+- **`pipeReflected`**: switched from 1-arg `read(byte[])` to confirmed 3-arg `read(byte[], int, int)`.
+  Only the 3-arg form is explicitly present in 5.1.4's `TarArchiveInputStream`; the 1-arg form
+  might resolve via InputStream base class but the 3-arg is guaranteed.
+- Updated Javadoc to document all 5.1.4 obfuscated method names.
+
+### Files touched
+- `extension/WcpExtractor.java`
+
+---
+
 ## v1.0.2 — fix: DXVK injection + stream leaks + clearDir safety (2026-03-13)
 **Commit:** `6baf5bb` | **Tag:** `v1.0.2`
 

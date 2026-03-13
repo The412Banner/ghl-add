@@ -1,0 +1,9 @@
+apktool_out/
+base/
+ext_classes/
+ext_dex/
+rebuilt-unsigned.apk
+rebuilt-aligned.apk
+classes11.dex
+*.apk
+!testkey.x509.pem

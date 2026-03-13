@@ -1,0 +1,255 @@
+name: Build APK
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download base APK
+        run: |
+          gh release download base-apk --pattern "*.apk" -D base/ -R ${{ github.repository }}
+          ls base/
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install apktool
+        run: |
+          APKTOOL_VER=2.9.3
+          mkdir -p $HOME/bin
+          wget -q "https://github.com/iBotPeaches/Apktool/releases/download/v${APKTOOL_VER}/apktool_${APKTOOL_VER}.jar" -O $HOME/bin/apktool.jar
+          wget -q "https://raw.githubusercontent.com/iBotPeaches/Apktool/master/scripts/linux/apktool" -O $HOME/bin/apktool
+          chmod +x $HOME/bin/apktool
+          echo "$HOME/bin" >> $GITHUB_PATH
+          java -jar $HOME/bin/apktool.jar --version
+
+      - name: Decompile APK
+        run: |
+          APK=$(ls base/*.apk | head -1)
+          echo "Decompiling: $APK"
+          java -jar $HOME/bin/apktool.jar d "$APK" -o apktool_out -f
+
+      - name: Apply all patches
+        run: |
+          python3 << 'PYEOF'
+          import re, sys
+
+          def patch(path, old, new, label):
+              content = open(path).read()
+              if old not in content:
+                  print(f"WARNING: anchor not found in {path} for: {label}")
+                  sys.exit(1)
+              open(path, 'w').write(content.replace(old, new, 1))
+              print(f"OK: {label}")
+
+          # ── 1. strings.xml: "Dashboard" → "My Games" ────────────────────────────
+          patch(
+              'apktool_out/res/values/strings.xml',
+              'name="llauncher_main_page_title_my">Dashboard<',
+              'name="llauncher_main_page_title_my">My Games<',
+              'My Games tab rename'
+          )
+
+          # ── 2. ids.xml: add iv_bci_launcher ID ──────────────────────────────────
+          content = open('apktool_out/res/values/ids.xml').read()
+          if 'iv_bci_launcher' not in content:
+              content = content.replace(
+                  '</resources>',
+                  '    <item type="id" name="iv_bci_launcher" />\n</resources>'
+              )
+              open('apktool_out/res/values/ids.xml', 'w').write(content)
+              print('OK: ids.xml iv_bci_launcher')
+          else:
+              print('SKIP: iv_bci_launcher already in ids.xml')
+
+          # ── 3. public.xml: register iv_bci_launcher public ID ───────────────────
+          content = open('apktool_out/res/values/public.xml').read()
+          if 'iv_bci_launcher' not in content:
+              content = content.replace(
+                  '</resources>',
+                  '    <public type="id" name="iv_bci_launcher" id="0x7f0a0e80" />\n</resources>'
+              )
+              open('apktool_out/res/values/public.xml', 'w').write(content)
+              print('OK: public.xml iv_bci_launcher')
+
+          # ── 4. Toolbar layout: insert BCI ImageView after iv_search ─────────────
+          layout_path = 'apktool_out/res/layout/llauncher_activity_new_launcher_main.xml'
+          content = open(layout_path).read()
+          if 'iv_bci_launcher' not in content:
+              bci_view = (
+                  '<com.xj.common.view.focus.focus.view.FocusableImageView'
+                  ' android:id="@id/iv_bci_launcher"'
+                  ' android:padding="@dimen/mw_3dp"'
+                  ' android:layout_width="@dimen/mw_30dp"'
+                  ' android:layout_height="@dimen/mw_30dp"'
+                  ' android:src="@drawable/ic_outline_open_in_new_24"'
+                  ' android:tint="#ffffffff"'
+                  ' android:layout_marginStart="@dimen/mw_16dp"'
+                  ' android:alpha="0.8" />'
+              )
+              # Insert immediately after the iv_search element
+              content = re.sub(
+                  r'(<[^>]+android:id="@id/iv_search"[^>]*/?>)',
+                  r'\1\n        ' + bci_view,
+                  content,
+                  count=1
+              )
+              open(layout_path, 'w').write(content)
+              print('OK: toolbar layout BCI button')
+
+          # ── 5. AndroidManifest.xml: register ComponentManagerActivity ───────────
+          patch(
+              'apktool_out/AndroidManifest.xml',
+              '</application>',
+              '    <activity android:name="app.revanced.extension.gamehub.ComponentManagerActivity"'
+              ' android:label="Components" android:exported="false"'
+              ' android:screenOrientation="sensorLandscape" />\n    </application>',
+              'manifest ComponentManagerActivity'
+          )
+
+          # ── 6. HomeLeftMenuDialog.smali: append Components item in Z0() ─────────
+          # Inject 2 instructions before the final return-void of Z0()
+          # The unique anchor is the iput-object for the Job field followed by
+          # the :cond_a / :goto_4 labels that precede return-void.
+          patch(
+              'apktool_out/smali_classes5/com/xj/landscape/launcher/ui/menu/HomeLeftMenuDialog.smali',
+              (
+                  '    iput-object v1, v0, Lcom/xj/landscape/launcher/ui/menu/HomeLeftMenuDialog;'
+                  '->o:Lkotlinx/coroutines/Job;\n\n'
+                  '    :cond_a\n'
+                  '    :goto_4\n'
+                  '    return-void\n'
+                  '.end method'
+              ),
+              (
+                  '    iput-object v1, v0, Lcom/xj/landscape/launcher/ui/menu/HomeLeftMenuDialog;'
+                  '->o:Lkotlinx/coroutines/Job;\n\n'
+                  '    :cond_a\n'
+                  '    :goto_4\n'
+                  # Load the live menu item list from p0.m and call our helper.
+                  # v14 is dead at this point; move-object/from16 reaches the p0 param register.
+                  '    move-object/from16 v14, p0\n'
+                  '    iget-object v14, v14, Lcom/xj/landscape/launcher/ui/menu/HomeLeftMenuDialog;->m:Ljava/util/List;\n'
+                  '    invoke-static {v14}, Lapp/revanced/extension/gamehub/ComponentManagerHelper;->addComponentsMenuItem(Ljava/util/List;)V\n'
+                  '    return-void\n'
+                  '.end method'
+              ),
+              'HomeLeftMenuDialog Z0() addComponentsMenuItem injection'
+          )
+
+          # ── 7. HomeLeftMenuDialog$init$1$9$2.smali: intercept item click ─────────
+          # Inject at the very start of a(MenuItem)V, before the "entity" null-check.
+          # p0 = this lambda, p1 = MenuItem, this.a = dialog, this.b = activity.
+          inj = (
+              '    iget-object v0, p0, Lcom/xj/landscape/launcher/ui/menu/HomeLeftMenuDialog$init$1$9$2;->a:Lcom/xj/landscape/launcher/ui/menu/HomeLeftMenuDialog;\n'
+              '    iget-object v1, p0, Lcom/xj/landscape/launcher/ui/menu/HomeLeftMenuDialog$init$1$9$2;->b:Landroidx/fragment/app/FragmentActivity;\n'
+              '    invoke-static {v0, p1, v1}, Lapp/revanced/extension/gamehub/ComponentManagerHelper;->handleMenuItemClick(Ljava/lang/Object;Ljava/lang/Object;Landroid/app/Activity;)Z\n'
+              '    move-result v0\n'
+              '    if-eqz v0, :cond_bh_not_handled\n'
+              '    return-void\n'
+              '    :cond_bh_not_handled\n'
+          )
+          patch(
+              'apktool_out/smali_classes5/com/xj/landscape/launcher/ui/menu/HomeLeftMenuDialog$init$1$9$2.smali',
+              '    const-string v0, "entity"\n',
+              inj + '    const-string v0, "entity"\n',
+              'HomeLeftMenuDialog$init$1$9$2 click intercept injection'
+          )
+
+          # ── 8. LandscapeLauncherMainActivity.smali: wire BCI button in initView() ─
+          # Inject after the last call in initView(), just before return-void.
+          patch(
+              'apktool_out/smali_classes5/com/xj/landscape/launcher/ui/main/LandscapeLauncherMainActivity.smali',
+              (
+                  '    invoke-virtual/range {p0 .. p0}, Lcom/xj/landscape/launcher/ui/main/LandscapeLauncherMainActivity;->X2()V\n\n'
+                  '    return-void\n'
+                  '.end method'
+              ),
+              (
+                  '    invoke-virtual/range {p0 .. p0}, Lcom/xj/landscape/launcher/ui/main/LandscapeLauncherMainActivity;->X2()V\n\n'
+                  '    move-object/from16 v0, p0\n'
+                  '    invoke-static {v0}, Lapp/revanced/extension/gamehub/ComponentManagerHelper;->setupBciButton(Landroid/app/Activity;)V\n\n'
+                  '    return-void\n'
+                  '.end method'
+              ),
+              'LandscapeLauncherMainActivity initView() setupBciButton injection'
+          )
+
+          print("\nAll patches applied successfully.")
+          PYEOF
+
+      - name: Rebuild APK
+        run: |
+          java -jar $HOME/bin/apktool.jar b apktool_out -o rebuilt-unsigned.apk
+          echo "Rebuild complete: $(du -sh rebuilt-unsigned.apk | cut -f1)"
+
+      - name: Compile and inject extension dex
+        run: |
+          # Find android.jar for compilation
+          ANDROID_JAR=$(ls $ANDROID_SDK_ROOT/platforms/android-*/android.jar 2>/dev/null | sort -V | tail -1)
+          echo "Using SDK: $ANDROID_JAR"
+
+          # Compile extension Java sources to class files
+          mkdir -p ext_classes
+          javac -source 8 -target 8 -cp "$ANDROID_JAR" -d ext_classes extension/*.java
+          echo "Compiled extension classes:"
+          find ext_classes -name "*.class"
+
+          # Convert class files to dex
+          BUILD_TOOLS=$(ls $ANDROID_SDK_ROOT/build-tools | sort -V | tail -1)
+          mkdir -p ext_dex
+          $ANDROID_SDK_ROOT/build-tools/$BUILD_TOOLS/d8 \
+            --release \
+            --min-api 29 \
+            --output ext_dex \
+            $(find ext_classes -name "*.class")
+          echo "Extension dex built: $(du -sh ext_dex/classes.dex | cut -f1)"
+
+          # Inject as classes11.dex (original APK has classes.dex through classes10.dex)
+          cp ext_dex/classes.dex classes11.dex
+          zip -j rebuilt-unsigned.apk classes11.dex
+          echo "Injected classes11.dex into APK"
+
+      - name: Zipalign and sign
+        run: |
+          BUILD_TOOLS=$(ls $ANDROID_SDK_ROOT/build-tools | sort -V | tail -1)
+
+          $ANDROID_SDK_ROOT/build-tools/$BUILD_TOOLS/zipalign -f -v 4 rebuilt-unsigned.apk rebuilt-aligned.apk
+
+          $ANDROID_SDK_ROOT/build-tools/$BUILD_TOOLS/apksigner sign \
+            --key testkey.pk8 \
+            --cert testkey.x509.pem \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --v3-signing-enabled true \
+            --out GameHub-Lite-5.1.4-patched.apk \
+            rebuilt-aligned.apk
+
+          echo "Signed: $(du -sh GameHub-Lite-5.1.4-patched.apk | cut -f1)"
+
+      - name: Get tag name
+        id: tag
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "name=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          else
+            echo "name=manual-$(date +%Y%m%d-%H%M%S)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          name: GameHub Lite 5.1.4 Patched ${{ steps.tag.outputs.name }}
+          prerelease: ${{ contains(steps.tag.outputs.name, '-') }}
+          files: GameHub-Lite-5.1.4-patched.apk

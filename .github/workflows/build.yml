@@ -117,34 +117,26 @@ jobs:
               'manifest ComponentManagerActivity'
           )
 
-          # ── 6. HomeLeftMenuDialog.smali: append Components item in Z0() ─────────
-          # Inject 2 instructions before the final return-void of Z0()
-          # The unique anchor is the iput-object for the Job field followed by
-          # the :cond_a / :goto_4 labels that precede return-void.
+          # ── 6. HomeLeftMenuDialog.smali: inject Components item before adapter.submitList ──
+          # Anchor: the if-eqz null-check on the adapter, immediately before
+          # iget-object v4 + invoke-static MultiViewHolderAdapterKt.f() (submitList).
+          # At this point v0 = HomeLeftMenuDialog (set by move-object/from16 at line 1256).
+          # We load this.m into v4, add our item, then let the original code re-load and submit.
           patch(
               'apktool_out/smali_classes5/com/xj/landscape/launcher/ui/menu/HomeLeftMenuDialog.smali',
               (
-                  '    iput-object v1, v0, Lcom/xj/landscape/launcher/ui/menu/HomeLeftMenuDialog;'
-                  '->o:Lkotlinx/coroutines/Job;\n\n'
-                  '    :cond_a\n'
-                  '    :goto_4\n'
-                  '    return-void\n'
-                  '.end method'
+                  '    if-eqz v3, :cond_1\n\n'
+                  '    iget-object v4, v0, Lcom/xj/landscape/launcher/ui/menu/HomeLeftMenuDialog;->m:Ljava/util/List;\n\n'
+                  '    invoke-static {v3, v4}, Lcom/xj/common/view/adapter/MultiViewHolderAdapterKt;->f(Landroidx/recyclerview/widget/RecyclerView$Adapter;Ljava/util/List;)V\n'
               ),
               (
-                  '    iput-object v1, v0, Lcom/xj/landscape/launcher/ui/menu/HomeLeftMenuDialog;'
-                  '->o:Lkotlinx/coroutines/Job;\n\n'
-                  '    :cond_a\n'
-                  '    :goto_4\n'
-                  # Load the live menu item list from p0.m and call our helper.
-                  # v14 is dead at this point; move-object/from16 reaches the p0 param register.
-                  '    move-object/from16 v14, p0\n'
-                  '    iget-object v14, v14, Lcom/xj/landscape/launcher/ui/menu/HomeLeftMenuDialog;->m:Ljava/util/List;\n'
-                  '    invoke-static {v14}, Lapp/revanced/extension/gamehub/ComponentManagerHelper;->addComponentsMenuItem(Ljava/util/List;)V\n'
-                  '    return-void\n'
-                  '.end method'
+                  '    if-eqz v3, :cond_1\n\n'
+                  '    iget-object v4, v0, Lcom/xj/landscape/launcher/ui/menu/HomeLeftMenuDialog;->m:Ljava/util/List;\n'
+                  '    invoke-static {v4}, Lapp/revanced/extension/gamehub/ComponentManagerHelper;->addComponentsMenuItem(Ljava/util/List;)V\n\n'
+                  '    iget-object v4, v0, Lcom/xj/landscape/launcher/ui/menu/HomeLeftMenuDialog;->m:Ljava/util/List;\n\n'
+                  '    invoke-static {v3, v4}, Lcom/xj/common/view/adapter/MultiViewHolderAdapterKt;->f(Landroidx/recyclerview/widget/RecyclerView$Adapter;Ljava/util/List;)V\n'
               ),
-              'HomeLeftMenuDialog Z0() addComponentsMenuItem injection'
+              'HomeLeftMenuDialog Z0() addComponentsMenuItem before adapter.submitList'
           )
 
           # ── 7. HomeLeftMenuDialog$init$1$9$2.smali: intercept item click ─────────

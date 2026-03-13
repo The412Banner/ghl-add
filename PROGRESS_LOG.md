@@ -1,5 +1,26 @@
 # ghl-add Progress Log
 
+## v1.0.2 — fix: DXVK injection + stream leaks + clearDir safety (2026-03-13)
+**Commit:** `6baf5bb` | **Tag:** `v1.0.2`
+
+### What changed
+- **DXVK/VKD3D/Box64/XZ injection was failing** with `NoSuchMethodException: TarArchiveInputStream.s`.
+  Root cause: `getNextTarEntry()` is obfuscated to `f()` in 5.1.4 (not `s()` like in 5.3.5 ReVanced).
+  Fix: changed `tarClass.getMethod("s")` → `tarClass.getMethod("f")` in `extractTar()`.
+- **Stream leaks** — a failed tar extraction left 4 streams unclosed (`raw`, `bis`, `zstd`/`xz`, `tar`),
+  causing 4× `"A resource failed to call close"` warnings in logcat. Fixed by wrapping all streams in
+  try-finally throughout `extract()`.
+- **clearDir safety** — `clearDir()` was called before the format branches, so an unrecognised file or
+  early I/O error would wipe the component folder with nothing to replace it. Moved `clearDir()` inside
+  each format branch (ZIP / zstd-tar / XZ-tar) so it only runs immediately before a real extraction.
+- **clearDir logging** — `File.delete()` now logs `W/BannerHub: clearDir: failed to delete <path>` when
+  it returns false, to diagnose if GameHub has component files locked.
+
+### Files touched
+- `extension/WcpExtractor.java`
+
+---
+
 ## v1.0.1 — fix: Components item visible in sidebar (2026-03-13)
 **Commit:** `e81190a` | **Tag:** `v1.0.1`
 

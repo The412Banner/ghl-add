@@ -24,10 +24,10 @@ import java.util.zip.ZipInputStream;
  *   <li>{@code com.github.luben.zstd.ZstdInputStreamNoFinalizer} (JNI, @Keep, not obfuscated)</li>
  *   <li>{@code org.tukaani.xz.XZInputStream} (not obfuscated; constructor takes InputStream + int)</li>
  *   <li>{@code org.apache.commons.compress.archivers.tar.TarArchiveInputStream}
- *       (R8-obfuscated; {@code getNextTarEntry()} renamed to {@code f()} in 5.1.4)</li>
+ *       (R8-obfuscated; {@code getNextTarEntry()} → {@code f()}; {@code read([BII)} kept)</li>
  *   <li>{@code org.apache.commons.compress.archivers.tar.TarArchiveEntry}
- *       ({@code getName()} kept via ArchiveEntry interface; {@code isDirectory()} obfuscated
- *       — detect by {@code getName().endsWith("/")} instead)</li>
+ *       ({@code getName()} → {@code p()} — ArchiveEntry interface is fully stripped by R8;
+ *       {@code isDirectory()} obfuscated — detect by {@code getName().endsWith("/")} instead)</li>
  * </ul>
  * </p>
  */
@@ -151,7 +151,7 @@ public final class WcpExtractor {
         Object tar = tarCtor.newInstance(in);
 
         Method nextEntry = tarClass.getMethod("f"); // obfuscated getNextTarEntry() in 5.1.4
-        Method getName = null;                        // resolved on first entry
+        Method getName = null;                       // resolved on first entry — obfuscated to p() in 5.1.4
 
         byte[] buf = new byte[BUF];
         boolean flattenToRoot = false;
@@ -160,7 +160,7 @@ public final class WcpExtractor {
         Object entry;
         while ((entry = nextEntry.invoke(tar)) != null) {
             if (getName == null) {
-                getName = entry.getClass().getMethod("getName");
+                getName = entry.getClass().getMethod("p"); // obfuscated getName() in 5.1.4
             }
             String name = (String) getName.invoke(entry);
             if (name == null) continue;
@@ -207,14 +207,13 @@ public final class WcpExtractor {
     }
 
     /**
-     * Reads from a TarArchiveInputStream (which is an InputStream at runtime) using the
-     * standard InputStream.read([B)I method (which is not obfuscated).
+     * Reads from a TarArchiveInputStream using the 3-arg read([BII)I method,
+     * which is confirmed present (not obfuscated) in 5.1.4's TarArchiveInputStream.
      */
     private static void pipeReflected(Object tar, OutputStream out, byte[] buf) throws Exception {
-        // TarArchiveInputStream is an InputStream — read([B)I is kept
-        Method readMethod = tar.getClass().getMethod("read", byte[].class);
+        Method readMethod = tar.getClass().getMethod("read", byte[].class, int.class, int.class);
         int n;
-        while ((n = (int) readMethod.invoke(tar, (Object) buf)) > 0) {
+        while ((n = (int) readMethod.invoke(tar, buf, 0, buf.length)) > 0) {
             out.write(buf, 0, n);
         }
     }

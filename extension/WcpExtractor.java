@@ -24,7 +24,7 @@ import java.util.zip.ZipInputStream;
  *   <li>{@code com.github.luben.zstd.ZstdInputStreamNoFinalizer} (JNI, @Keep, not obfuscated)</li>
  *   <li>{@code org.tukaani.xz.XZInputStream} (not obfuscated; constructor takes InputStream + int)</li>
  *   <li>{@code org.apache.commons.compress.archivers.tar.TarArchiveInputStream}
- *       (R8-obfuscated; {@code getNextTarEntry()} renamed to {@code s()})</li>
+ *       (R8-obfuscated; {@code getNextTarEntry()} renamed to {@code f()} in 5.1.4)</li>
  *   <li>{@code org.apache.commons.compress.archivers.tar.TarArchiveEntry}
  *       ({@code getName()} kept via ArchiveEntry interface; {@code isDirectory()} obfuscated
  *       — detect by {@code getName().endsWith("/")} instead)</li>
@@ -46,47 +46,56 @@ public final class WcpExtractor {
     public static void extract(ContentResolver cr, Uri uri, File destDir)
             throws Exception {
 
-        clearDir(destDir);
-        destDir.mkdirs();
-
         InputStream raw = cr.openInputStream(uri);
         if (raw == null) throw new IOException("Cannot open URI: " + uri);
 
-        BufferedInputStream bis = new BufferedInputStream(raw);
+        try {
+            BufferedInputStream bis = new BufferedInputStream(raw);
+            try {
+                // Peek at 4-byte magic
+                bis.mark(4);
+                byte[] hdr = new byte[4];
+                int read = bis.read(hdr, 0, 4);
+                bis.reset();
+                if (read < 2) throw new IOException("File too short");
 
-        // Peek at 4-byte magic
-        bis.mark(4);
-        byte[] hdr = new byte[4];
-        int read = bis.read(hdr, 0, 4);
-        bis.reset();
-        if (read < 2) throw new IOException("File too short");
+                int b0 = hdr[0] & 0xFF, b1 = hdr[1] & 0xFF,
+                    b2 = hdr[2] & 0xFF, b3 = hdr[3] & 0xFF;
 
-        int b0 = hdr[0] & 0xFF, b1 = hdr[1] & 0xFF,
-            b2 = hdr[2] & 0xFF, b3 = hdr[3] & 0xFF;
+                if (b0 == 0x50 && b1 == 0x4B) {
+                    // ZIP: PK magic
+                    clearDir(destDir); destDir.mkdirs();
+                    extractZip(bis, destDir);
 
-        if (b0 == 0x50 && b1 == 0x4B) {
-            // ZIP: PK magic
-            extractZip(bis, destDir);
-            bis.close();
+                } else if (b0 == 0x28 && b1 == 0xB5 && b2 == 0x2F && b3 == 0xFD) {
+                    // zstd tar
+                    clearDir(destDir); destDir.mkdirs();
+                    InputStream zstd = openZstd(bis);
+                    try {
+                        extractTar(zstd, destDir);
+                    } finally {
+                        zstd.close();
+                    }
 
-        } else if (b0 == 0x28 && b1 == 0xB5 && b2 == 0x2F && b3 == 0xFD) {
-            // zstd tar
-            InputStream zstd = openZstd(bis);
-            extractTar(zstd, destDir);
-            zstd.close();
-            bis.close();
+                } else if (b0 == 0xFD && b1 == 0x37 && b2 == 0x7A && b3 == 0x58) {
+                    // XZ tar
+                    clearDir(destDir); destDir.mkdirs();
+                    InputStream xz = openXz(bis);
+                    try {
+                        extractTar(xz, destDir);
+                    } finally {
+                        xz.close();
+                    }
 
-        } else if (b0 == 0xFD && b1 == 0x37 && b2 == 0x7A && b3 == 0x58) {
-            // XZ tar
-            InputStream xz = openXz(bis);
-            extractTar(xz, destDir);
-            xz.close();
-            bis.close();
-
-        } else {
-            bis.close();
-            throw new Exception(String.format(
-                    "Unknown format (magic: %02X %02X %02X %02X)", b0, b1, b2, b3));
+                } else {
+                    throw new Exception(String.format(
+                            "Unknown format (magic: %02X %02X %02X %02X)", b0, b1, b2, b3));
+                }
+            } finally {
+                bis.close();
+            }
+        } finally {
+            raw.close();
         }
     }
 
@@ -141,7 +150,7 @@ public final class WcpExtractor {
         Constructor<?> tarCtor = tarClass.getConstructor(InputStream.class);
         Object tar = tarCtor.newInstance(in);
 
-        Method nextEntry = tarClass.getMethod("s"); // obfuscated getNextTarEntry()
+        Method nextEntry = tarClass.getMethod("f"); // obfuscated getNextTarEntry() in 5.1.4
         Method getName = null;                        // resolved on first entry
 
         byte[] buf = new byte[BUF];
@@ -220,7 +229,9 @@ public final class WcpExtractor {
             if (f.isDirectory()) {
                 clearDir(f);
             }
-            f.delete();
+            if (!f.delete()) {
+                Log.w(TAG, "clearDir: failed to delete " + f.getAbsolutePath());
+            }
         }
     }
 }

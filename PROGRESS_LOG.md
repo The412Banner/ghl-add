@@ -1,5 +1,18 @@
 # ghl-add Progress Log
 
+## v1.1.0 — fix: nop all setRequestedOrientation() smali calls to stop startup rotation (2026-03-14)
+**Commit:** `e3e8ae0` | **Tag:** `v1.1.0`
+
+### What changed
+- Manifest patch alone (v1.0.7–v1.0.9) failed — GameHub overrides orientation at runtime.
+- New smali patch: removes every `invoke-virtual ...->setRequestedOrientation(I)V` line from all smali files (5 files affected).
+- Combined with the manifest sensorLandscape patch (98 activity tags), the manifest now has sole control over orientation.
+
+### Files touched
+- `.github/workflows/build.yml`
+
+---
+
 ## v1.0.9 — fix: force sensorLandscape on ALL activities to stop startup rotation (2026-03-14)
 **Commit:** `35eb596` | **Tag:** `v1.0.9`
 

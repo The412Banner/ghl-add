@@ -3,8 +3,6 @@ package app.revanced.extension.gamehub;
 import android.app.Activity;
 import android.content.Intent;
 import android.util.Log;
-import android.widget.Toast;
-
 import java.lang.reflect.Constructor;
 import java.util.List;
 
@@ -95,41 +93,4 @@ public final class ComponentManagerHelper {
         }
     }
 
-    // ── Called from LandscapeLauncherMainActivity.initView() ─────────────────
-
-    /**
-     * Finds the BCI launcher button in the toolbar and attaches a click listener.
-     * Opens BannersComponentInjector if installed, or shows a toast if not.
-     *
-     * @param activity the LandscapeLauncherMainActivity instance
-     */
-    public static void setupBciButton(Activity activity) {
-        try {
-            int id = activity.getResources().getIdentifier(
-                    "iv_bci_launcher", "id", activity.getPackageName());
-            if (id == 0) return;
-
-            android.view.View btn = activity.findViewById(id);
-            if (btn == null) return;
-
-            btn.setOnClickListener(v -> {
-                try {
-                    android.content.pm.PackageManager pm = activity.getPackageManager();
-                    Intent intent = pm.getLaunchIntentForPackage("com.banner.inject");
-                    if (intent != null) {
-                        activity.startActivity(intent);
-                    } else {
-                        Toast.makeText(activity,
-                                "BannersComponentInjector not installed",
-                                Toast.LENGTH_SHORT).show();
-                    }
-                } catch (Exception e) {
-                    Toast.makeText(activity, "Error: " + e.getMessage(),
-                            Toast.LENGTH_SHORT).show();
-                }
-            });
-        } catch (Exception e) {
-            Log.e(TAG, "setupBciButton failed", e);
-        }
-    }
 }

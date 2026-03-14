@@ -42,7 +42,7 @@ jobs:
       - name: Apply all patches
         run: |
           python3 << 'PYEOF'
-          import re, sys
+          import sys
 
           def patch(path, old, new, label):
               content = open(path).read()
@@ -51,61 +51,6 @@ jobs:
                   sys.exit(1)
               open(path, 'w').write(content.replace(old, new, 1))
               print(f"OK: {label}")
-
-          # ── 1. strings.xml: "Dashboard" → "My Games" ────────────────────────────
-          patch(
-              'apktool_out/res/values/strings.xml',
-              'name="llauncher_main_page_title_my">Dashboard<',
-              'name="llauncher_main_page_title_my">My Games<',
-              'My Games tab rename'
-          )
-
-          # ── 2. ids.xml: add iv_bci_launcher ID ──────────────────────────────────
-          content = open('apktool_out/res/values/ids.xml').read()
-          if 'iv_bci_launcher' not in content:
-              content = content.replace(
-                  '</resources>',
-                  '    <item type="id" name="iv_bci_launcher" />\n</resources>'
-              )
-              open('apktool_out/res/values/ids.xml', 'w').write(content)
-              print('OK: ids.xml iv_bci_launcher')
-          else:
-              print('SKIP: iv_bci_launcher already in ids.xml')
-
-          # ── 3. public.xml: register iv_bci_launcher public ID ───────────────────
-          content = open('apktool_out/res/values/public.xml').read()
-          if 'iv_bci_launcher' not in content:
-              content = content.replace(
-                  '</resources>',
-                  '    <public type="id" name="iv_bci_launcher" id="0x7f0a0e80" />\n</resources>'
-              )
-              open('apktool_out/res/values/public.xml', 'w').write(content)
-              print('OK: public.xml iv_bci_launcher')
-
-          # ── 4. Toolbar layout: insert BCI ImageView after iv_search ─────────────
-          layout_path = 'apktool_out/res/layout/llauncher_activity_new_launcher_main.xml'
-          content = open(layout_path).read()
-          if 'iv_bci_launcher' not in content:
-              bci_view = (
-                  '<com.xj.common.view.focus.focus.view.FocusableImageView'
-                  ' android:id="@id/iv_bci_launcher"'
-                  ' android:padding="@dimen/mw_3dp"'
-                  ' android:layout_width="@dimen/mw_30dp"'
-                  ' android:layout_height="@dimen/mw_30dp"'
-                  ' android:src="@drawable/ic_outline_open_in_new_24"'
-                  ' android:tint="#ffffffff"'
-                  ' android:layout_marginStart="@dimen/mw_16dp"'
-                  ' android:alpha="0.8" />'
-              )
-              # Insert immediately after the iv_search element
-              content = re.sub(
-                  r'(<[^>]+android:id="@id/iv_search"[^>]*/?>)',
-                  r'\1\n        ' + bci_view,
-                  content,
-                  count=1
-              )
-              open(layout_path, 'w').write(content)
-              print('OK: toolbar layout BCI button')
 
           # ── 5. AndroidManifest.xml: register ComponentManagerActivity ───────────
           patch(
@@ -156,25 +101,6 @@ jobs:
               '    const-string v0, "entity"\n',
               inj + '    const-string v0, "entity"\n',
               'HomeLeftMenuDialog$init$1$9$2 click intercept injection'
-          )
-
-          # ── 8. LandscapeLauncherMainActivity.smali: wire BCI button in initView() ─
-          # Inject after the last call in initView(), just before return-void.
-          patch(
-              'apktool_out/smali_classes5/com/xj/landscape/launcher/ui/main/LandscapeLauncherMainActivity.smali',
-              (
-                  '    invoke-virtual/range {p0 .. p0}, Lcom/xj/landscape/launcher/ui/main/LandscapeLauncherMainActivity;->X2()V\n\n'
-                  '    return-void\n'
-                  '.end method'
-              ),
-              (
-                  '    invoke-virtual/range {p0 .. p0}, Lcom/xj/landscape/launcher/ui/main/LandscapeLauncherMainActivity;->X2()V\n\n'
-                  '    move-object/from16 v0, p0\n'
-                  '    invoke-static {v0}, Lapp/revanced/extension/gamehub/ComponentManagerHelper;->setupBciButton(Landroid/app/Activity;)V\n\n'
-                  '    return-void\n'
-                  '.end method'
-              ),
-              'LandscapeLauncherMainActivity initView() setupBciButton injection'
           )
 
           print("\nAll patches applied successfully.")

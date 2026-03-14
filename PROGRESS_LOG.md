@@ -1,5 +1,18 @@
 # ghl-add Progress Log
 
+## v1.0.9 — fix: force sensorLandscape on ALL activities to stop startup rotation (2026-03-14)
+**Commit:** `35eb596` | **Tag:** `v1.0.9`
+
+### What changed
+- Patches every `<activity>` opening tag in AndroidManifest.xml with `android:screenOrientation="sensorLandscape"`.
+- v1.0.8 failed (malformed XML): regex matched both `<activity>` and `<activity />` self-closing tags; `tag[:-1]` stripped the `/` from self-closing tags. Fixed by checking `tag.endswith('/>')` and using `tag[:-2] + ' />'`.
+- Skips tags already set to a landscape variant (sensorLandscape, landscape, reverseLandscape, userLandscape).
+
+### Files touched
+- `.github/workflows/build.yml`
+
+---
+
 ## v1.0.7 — fix: force sensorLandscape on launcher activity to stop startup rotation (2026-03-14)
 **Commit:** `5fff30f` | **Tag:** `v1.0.7`
 

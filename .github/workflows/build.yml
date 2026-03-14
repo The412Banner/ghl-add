@@ -76,6 +76,26 @@ jobs:
           open(manifest_path, 'w').write(new_content)
           print(f'OK: forced sensorLandscape on all activities ({count} tags patched)')
 
+          # ── 4c. Smali: nop all setRequestedOrientation() calls ──────────────────
+          # Manifest orientation is overridden at runtime — remove every smali call
+          # to setRequestedOrientation so the manifest sensorLandscape takes effect.
+          import os, glob
+          smali_files = glob.glob('apktool_out/smali*/**/*.smali', recursive=True)
+          nop_count = 0
+          for sf in smali_files:
+              text = open(sf).read()
+              if 'setRequestedOrientation' not in text:
+                  continue
+              new_text = re.sub(
+                  r'[ \t]*invoke-[^\n]*->setRequestedOrientation\(I\)V\n',
+                  '',
+                  text
+              )
+              if new_text != text:
+                  open(sf, 'w').write(new_text)
+                  nop_count += 1
+          print(f'OK: nopped setRequestedOrientation in {nop_count} smali file(s)')
+
           # ── 5. AndroidManifest.xml: register ComponentManagerActivity ───────────
           patch(
               'apktool_out/AndroidManifest.xml',

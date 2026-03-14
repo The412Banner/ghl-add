@@ -60,14 +60,17 @@ jobs:
           LANDSCAPE = ('sensorLandscape', 'landscape', 'reverseLandscape', 'userLandscape')
           def fix_orientation(m):
               tag = m.group(0)
+              self_closing = tag.endswith('/>')
               if 'screenOrientation' in tag:
-                  # Already has an orientation — only replace if it's not already landscape
                   if any(f'"{o}"' in tag for o in LANDSCAPE):
                       return tag  # already landscape, leave it
                   return re.sub(r'android:screenOrientation="[^"]*"',
                                 'android:screenOrientation="sensorLandscape"', tag)
-              # No orientation attr — append before closing >
-              return tag[:-1] + '\n        android:screenOrientation="sensorLandscape">'
+              # No orientation attr — insert before /> or >
+              if self_closing:
+                  return tag[:-2] + '\n        android:screenOrientation="sensorLandscape" />'
+              else:
+                  return tag[:-1] + '\n        android:screenOrientation="sensorLandscape">'
           new_content = re.sub(r'<activity\b[^>]*>', fix_orientation, content)
           count = new_content.count('screenOrientation="sensorLandscape"')
           open(manifest_path, 'w').write(new_content)

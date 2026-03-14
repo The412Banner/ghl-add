@@ -1,5 +1,17 @@
 # ghl-add Progress Log
 
+## v1.1.1 — revert: roll back to v1.0.4 (remove all orientation patches) (2026-03-14)
+**Commit:** `0e407f2` | **Tag:** `v1.1.1`
+
+### What changed
+- Reverted build.yml to v1.0.4 state — removed all orientation patches (v1.0.5–v1.1.0).
+- The startup rotation could not be fixed via manifest or smali patching.
+
+### Files touched
+- `.github/workflows/build.yml`
+
+---
+
 ## v1.1.0 — fix: nop all setRequestedOrientation() smali calls to stop startup rotation (2026-03-14)
 **Commit:** `e3e8ae0` | **Tag:** `v1.1.0`
 

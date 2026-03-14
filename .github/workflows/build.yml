@@ -52,40 +52,26 @@ jobs:
               open(path, 'w').write(content.replace(old, new, 1))
               print(f"OK: {label}")
 
-          # ── 4b. AndroidManifest.xml: force sensorLandscape on main launcher activity ─
-          # Prevents the 360° rotation on first launch (portrait→landscape transition).
-          # Finds the activity containing android.intent.action.MAIN (the launcher activity)
-          # by searching backwards from the MAIN string to its <activity opening tag.
+          # ── 4b. AndroidManifest.xml: force sensorLandscape on ALL activities ─────
+          # Splash/intro activities launch in portrait before the main landscape
+          # activity, causing a 360° rotation. Patch every <activity opening tag.
           manifest_path = 'apktool_out/AndroidManifest.xml'
           content = open(manifest_path).read()
-          # android.intent.action.MAIN may appear in <queries> before <application>,
-          # so scan all occurrences and find the one inside an <activity> block.
-          act_start = -1
-          pos = 0
-          while True:
-              main_pos = content.find('android.intent.action.MAIN', pos)
-              if main_pos == -1:
-                  break
-              candidate = content.rfind('<activity', 0, main_pos)
-              if candidate != -1:
-                  # Confirm no </activity> closes the candidate before main_pos
-                  if content.find('</activity>', candidate, main_pos) == -1:
-                      act_start = candidate
-                      break
-              pos = main_pos + 1
-          if act_start == -1:
-              print("WARNING: launcher <activity> not found in manifest")
-              sys.exit(1)
-          tag_end = content.index('>', act_start)
-          opening_tag = content[act_start:tag_end + 1]
-          if 'screenOrientation' in opening_tag:
-              new_opening = re.sub(r'android:screenOrientation="[^"]*"',
-                                   'android:screenOrientation="sensorLandscape"', opening_tag)
-          else:
-              new_opening = opening_tag[:-1] + '\n        android:screenOrientation="sensorLandscape">'
-          content = content[:act_start] + new_opening + content[tag_end + 1:]
-          open(manifest_path, 'w').write(content)
-          print('OK: launcher activity screenOrientation=sensorLandscape')
+          LANDSCAPE = ('sensorLandscape', 'landscape', 'reverseLandscape', 'userLandscape')
+          def fix_orientation(m):
+              tag = m.group(0)
+              if 'screenOrientation' in tag:
+                  # Already has an orientation — only replace if it's not already landscape
+                  if any(f'"{o}"' in tag for o in LANDSCAPE):
+                      return tag  # already landscape, leave it
+                  return re.sub(r'android:screenOrientation="[^"]*"',
+                                'android:screenOrientation="sensorLandscape"', tag)
+              # No orientation attr — append before closing >
+              return tag[:-1] + '\n        android:screenOrientation="sensorLandscape">'
+          new_content = re.sub(r'<activity\b[^>]*>', fix_orientation, content)
+          count = new_content.count('screenOrientation="sensorLandscape"')
+          open(manifest_path, 'w').write(new_content)
+          print(f'OK: forced sensorLandscape on all activities ({count} tags patched)')
 
           # ── 5. AndroidManifest.xml: register ComponentManagerActivity ───────────
           patch(

@@ -1,5 +1,22 @@
 # ghl-add Progress Log
 
+## v1.0.4 — refactor: drop BCI button + My Games rename, keep only component manager sidebar (2026-03-14)
+**Commit:** `e16101e` | **Tag:** `v1.0.4`
+
+### What changed
+- Removed "My Games" tab rename patch (strings.xml `Dashboard` → `My Games`)
+- Removed BCI launcher button: ids.xml ID, public.xml public ID, toolbar layout `iv_bci_launcher` ImageView, and `LandscapeLauncherMainActivity.initView()` smali injection
+- Removed `setupBciButton()` from `ComponentManagerHelper.java` and its `Toast` import
+- Kept patches 5/6/7: AndroidManifest ComponentManagerActivity registration, `addComponentsMenuItem()` injection, click intercept injection
+- Kept `addComponentsMenuItem()` + `handleMenuItemClick()` in ComponentManagerHelper
+- Updated `base-apk` release asset to `GameHub-Lite-v5.1.4.apk` (52,013,870 bytes)
+
+### Files touched
+- `.github/workflows/build.yml`
+- `extension/ComponentManagerHelper.java`
+
+---
+
 ## v1.0.3 — fix: TarArchiveEntry.getName() is p() in 5.1.4 + use 3-arg read() (2026-03-13)
 **Commit:** `bff874d` | **Tag:** `v1.0.3`
 

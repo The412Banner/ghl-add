@@ -58,13 +58,23 @@ jobs:
           # by searching backwards from the MAIN string to its <activity opening tag.
           manifest_path = 'apktool_out/AndroidManifest.xml'
           content = open(manifest_path).read()
-          main_pos = content.find('android.intent.action.MAIN')
-          if main_pos == -1:
-              print("WARNING: android.intent.action.MAIN not found in manifest")
-              sys.exit(1)
-          act_start = content.rfind('<activity', 0, main_pos)
+          # android.intent.action.MAIN may appear in <queries> before <application>,
+          # so scan all occurrences and find the one inside an <activity> block.
+          act_start = -1
+          pos = 0
+          while True:
+              main_pos = content.find('android.intent.action.MAIN', pos)
+              if main_pos == -1:
+                  break
+              candidate = content.rfind('<activity', 0, main_pos)
+              if candidate != -1:
+                  # Confirm no </activity> closes the candidate before main_pos
+                  if content.find('</activity>', candidate, main_pos) == -1:
+                      act_start = candidate
+                      break
+              pos = main_pos + 1
           if act_start == -1:
-              print("WARNING: no <activity before MAIN action in manifest")
+              print("WARNING: launcher <activity> not found in manifest")
               sys.exit(1)
           tag_end = content.index('>', act_start)
           opening_tag = content[act_start:tag_end + 1]

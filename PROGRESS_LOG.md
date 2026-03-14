@@ -1,5 +1,20 @@
 # ghl-add Progress Log
 
+## v1.0.7 — fix: force sensorLandscape on launcher activity to stop startup rotation (2026-03-14)
+**Commit:** `5fff30f` | **Tag:** `v1.0.7`
+
+### What changed
+- Added `android:screenOrientation="sensorLandscape"` to the main launcher activity in AndroidManifest.xml.
+- Prevents the 360° portrait→landscape rotation on first app launch.
+- Patch finds the launcher activity by scanning all occurrences of `android.intent.action.MAIN` and picking the one inside an `<activity>` element (skips occurrences in `<queries>` blocks, which appeared first and caused v1.0.5/v1.0.6 to fail).
+- v1.0.5 failed: regex search by `LandscapeLauncherMainActivity` class name found nothing (class name differs in decoded manifest).
+- v1.0.6 failed: `android.intent.action.MAIN` in `<queries>` block appeared before the `<application>`, so `rfind('<activity')` returned -1.
+
+### Files touched
+- `.github/workflows/build.yml`
+
+---
+
 ## v1.0.4 — refactor: drop BCI button + My Games rename, keep only component manager sidebar (2026-03-14)
 **Commit:** `e16101e` | **Tag:** `v1.0.4`
 
